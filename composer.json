@@ -1,0 +1,15 @@
+{
+	"name": "viney/viney-post-qr-codes",
+	"description": "Automatically generates QR codes for selected WordPress post types.",
+	"type": "wordpress-plugin",
+	"license": "GPL-2.0-or-later",
+	"require": {
+		"php": "^8.2",
+		"chillerlan/php-qrcode": "^6.0"
+	},
+	"autoload": {
+		"psr-4": {
+			"Viney\\PostQRCodes\\": "includes/"
+		}
+	}
+}

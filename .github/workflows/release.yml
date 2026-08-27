@@ -1,0 +1,58 @@
+name: Zip and Release Plugin
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Zip and Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read plugin slug from .plugin-slug
+        id: get-slug
+        run: |
+          if [ ! -f ".plugin-slug" ]; then
+            echo "❌ .plugin-slug file not found!"
+            exit 1
+          fi
+
+          PLUGIN_SLUG=$(cat .plugin-slug | tr -d '\r')
+          echo "plugin_slug=$PLUGIN_SLUG" >> $GITHUB_OUTPUT
+          echo "📦 Detected plugin slug: $PLUGIN_SLUG"
+
+      - name: Zip plugin directory
+        run: |
+          PLUGIN_SLUG="${{ steps.get-slug.outputs.plugin_slug }}"
+          VERSION=${GITHUB_REF##*/}
+          ZIP_NAME="${PLUGIN_SLUG}-${VERSION}.zip"
+
+          echo "Creating zip: $ZIP_NAME"
+
+          mkdir -p ../build/${PLUGIN_SLUG}
+
+          rsync -av --delete \
+            --exclude-from=".zipignore" \
+            "$GITHUB_WORKSPACE/" "../build/${PLUGIN_SLUG}/"
+
+          cd ../build
+          zip -r "../$ZIP_NAME" "${PLUGIN_SLUG}"
+
+          mv "../$ZIP_NAME" "$GITHUB_WORKSPACE/"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: ${{ github.workspace }}/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

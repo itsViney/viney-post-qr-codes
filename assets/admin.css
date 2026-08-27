@@ -1,0 +1,119 @@
+.viney-post-qr-codes-utm-fields {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+}
+
+.viney-post-qr-codes-utm-fields.is-hidden {
+	display: none;
+}
+
+.viney-post-qr-codes-utm-fields label {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	max-width: 220px;
+}
+
+.viney-post-qr-codes-utm-fields label span {
+	align-items: center;
+	display: flex;
+	gap: 4px;
+}
+
+.viney-post-qr-codes-appearance {
+	align-items: flex-start;
+	display: flex;
+	gap: 32px;
+}
+
+.viney-post-qr-codes-appearance .form-table {
+	max-width: 720px;
+}
+
+.viney-post-qr-codes-preview {
+	margin-top: 8px;
+	width: 260px;
+}
+
+.viney-post-qr-codes-preview-frame {
+	align-items: center;
+	/* background-color: #f6f7f7;
+	background-image:
+		linear-gradient(45deg, #ddd 25%, transparent 25%),
+		linear-gradient(-45deg, #ddd 25%, transparent 25%),
+		linear-gradient(45deg, transparent 75%, #ddd 75%),
+		linear-gradient(-45deg, transparent 75%, #ddd 75%); */
+	/* background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+	background-size: 20px 20px; */
+	border: 1px solid #c3c4c7;
+	display: flex;
+	justify-content: center;
+	min-height: 260px;
+	padding: 0;
+	position: relative;
+}
+
+.viney-post-qr-codes-preview-frame img {
+	display: block;
+	height: auto;
+	max-width: 100%;
+}
+
+.viney-post-qr-codes-preview-frame span {
+	background: rgba(255, 255, 255, 0.86);
+	padding: 4px 8px;
+	position: absolute;
+}
+
+.viney-post-qr-codes-preview-frame.has-image span {
+	display: none;
+}
+
+.viney-post-qr-codes-inline-check {
+	display: inline-block;
+	margin-left: 12px;
+}
+
+.viney-post-qr-codes-logo-preview {
+	margin-bottom: 8px;
+}
+
+.viney-post-qr-codes-logo-preview img {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	display: block;
+	height: 80px;
+	object-fit: cover;
+	width: 80px;
+}
+
+.viney-post-qr-codes-settings .is-hidden {
+	display: none;
+}
+
+.viney-post-qr-codes-regenerate {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+
+.viney-post-qr-codes-regenerate .description {
+	flex-basis: 100%;
+	margin: 0;
+}
+
+.viney-post-qr-codes-custom {
+	max-width: 760px;
+}
+
+.viney-post-qr-codes-custom label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 6px;
+}
+
+.viney-post-qr-codes-custom textarea {
+	margin-bottom: 8px;
+}
