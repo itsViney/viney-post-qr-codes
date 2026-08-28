@@ -882,7 +882,16 @@ final class Plugin {
 		);
 
 		$image_data = ( new QRCode( $options ) )->render( $url );
+
+		if ( ! empty( $appearance['transparent'] ) ) {
+			$image_data = $this->make_png_color_transparent( $image_data, $background );
+		}
+
 		$image_data = $this->resize_png_data( $image_data, self::OUTPUT_SIZE, $is_circles || $is_styled_rounded );
+
+		if ( ! empty( $appearance['transparent'] ) ) {
+			$image_data = $this->make_png_color_transparent( $image_data, $background );
+		}
 
 		if ( $logo_path ) {
 			$image_data = $this->add_logo_to_png_data( $image_data, $logo_path, $background, ! empty( $appearance['transparent'] ) );
@@ -1446,6 +1455,45 @@ final class Plugin {
 		$output = ob_get_clean();
 
 		imagedestroy( $resized );
+
+		return false === $output ? $png_data : $output;
+	}
+
+	private function make_png_color_transparent( string $png_data, array $transparent_color ): string {
+		$image = imagecreatefromstring( $png_data );
+
+		if ( false === $image ) {
+			return $png_data;
+		}
+
+		imagealphablending( $image, false );
+		imagesavealpha( $image, true );
+
+		$transparent = imagecolorallocatealpha( $image, $transparent_color[0], $transparent_color[1], $transparent_color[2], 127 );
+
+		if ( false === $transparent ) {
+			imagedestroy( $image );
+
+			return $png_data;
+		}
+
+		$width  = imagesx( $image );
+		$height = imagesy( $image );
+		$target = ( $transparent_color[0] << 16 ) | ( $transparent_color[1] << 8 ) | $transparent_color[2];
+
+		for ( $y = 0; $y < $height; $y++ ) {
+			for ( $x = 0; $x < $width; $x++ ) {
+				if ( ( imagecolorat( $image, $x, $y ) & 0xFFFFFF ) === $target ) {
+					imagesetpixel( $image, $x, $y, $transparent );
+				}
+			}
+		}
+
+		ob_start();
+		imagepng( $image );
+		$output = ob_get_clean();
+
+		imagedestroy( $image );
 
 		return false === $output ? $png_data : $output;
 	}
