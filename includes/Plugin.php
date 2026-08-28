@@ -9,6 +9,7 @@ namespace Viney\PostQRCodes;
 
 use chillerlan\QRCode\Data\QRMatrix;
 use chillerlan\QRCode\Common\EccLevel;
+use chillerlan\QRCode\Common\Mode;
 use chillerlan\QRCode\Output\QRGdImagePNG;
 use chillerlan\QRCode\QRCode;
 use chillerlan\QRCode\QROptions;
@@ -858,30 +859,46 @@ final class Plugin {
 		$module_values = $this->get_module_values( $foreground, $background );
 		$is_circles = 'rounded' === $shape;
 		$is_styled_rounded = 'styled_rounded' === $shape;
-		$options    = new QROptions(
-			array(
-				'outputInterface'     => $is_styled_rounded ? QRGdStyledRounded::class : QRGdImagePNG::class,
-				'outputBase64'        => false,
-				'eccLevel'            => $logo_path ? EccLevel::H : EccLevel::L,
-				'scale'               => $is_styled_rounded ? self::RENDER_SCALE_ROUNDED : ( $is_circles ? self::RENDER_SCALE_CIRCLES : self::RENDER_SCALE_SQUARE ),
-				'addQuietzone'        => true,
-				'quietzoneSize'       => (int) $appearance['margin'],
-				'bgColor'             => $background,
-				'imageTransparent'    => ! empty( $appearance['transparent'] ),
-				'transparencyColor'   => $background,
-				'drawLightModules'    => false,
-				'drawCircularModules' => $is_circles || $is_styled_rounded,
-				'circleRadius'        => 0.35,
-				'keepAsSquare'        => array(
-					QRMatrix::M_FINDER_DARK,
-					QRMatrix::M_FINDER_DOT,
-					QRMatrix::M_ALIGNMENT_DARK,
-				),
-				'moduleValues'        => $module_values,
-			)
+		$scale      = $is_styled_rounded ? self::RENDER_SCALE_ROUNDED : ( $is_circles ? self::RENDER_SCALE_CIRCLES : self::RENDER_SCALE_SQUARE );
+		$option_values = array(
+			'outputInterface'     => $is_styled_rounded ? QRGdStyledRounded::class : QRGdImagePNG::class,
+			'outputBase64'        => false,
+			'eccLevel'            => $logo_path ? EccLevel::H : EccLevel::L,
+			'scale'               => $scale,
+			'addQuietzone'        => true,
+			'quietzoneSize'       => (int) $appearance['margin'],
+			'bgColor'             => $background,
+			'imageTransparent'    => ! empty( $appearance['transparent'] ),
+			'transparencyColor'   => $background,
+			'drawLightModules'    => false,
+			'drawCircularModules' => $is_circles || $is_styled_rounded,
+			'circleRadius'        => 0.35,
+			'keepAsSquare'        => array(
+				QRMatrix::M_FINDER_DARK,
+				QRMatrix::M_FINDER_DOT,
+				QRMatrix::M_ALIGNMENT_DARK,
+			),
+			'moduleValues'        => $module_values,
 		);
 
-		$image_data = ( new QRCode( $options ) )->render( $url );
+		$logo_space_modules = 0;
+
+		if ( $logo_path ) {
+			$probe_qrcode = new QRCode( new QROptions( $option_values ) );
+			$this->add_data_segment_to_qrcode( $probe_qrcode, $url );
+			$probe_matrix       = $probe_qrcode->getQRMatrix();
+			$qr_dimension       = max( 1, $probe_matrix->moduleCount - ( (int) $appearance['margin'] * 2 ) );
+			$logo_space_modules = $this->get_centered_module_span( $qr_dimension, 0.24, 9 );
+
+			$option_values['addLogoSpace']    = true;
+			$option_values['logoSpaceWidth']  = $logo_space_modules;
+			$option_values['logoSpaceHeight'] = $logo_space_modules;
+		}
+
+		$qrcode = new QRCode( new QROptions( $option_values ) );
+		$this->add_data_segment_to_qrcode( $qrcode, $url );
+		$matrix     = $qrcode->getQRMatrix();
+		$image_data = $qrcode->renderMatrix( $matrix );
 
 		if ( ! empty( $appearance['transparent'] ) ) {
 			$image_data = $this->make_png_color_transparent( $image_data, $background );
@@ -894,7 +911,7 @@ final class Plugin {
 		}
 
 		if ( $logo_path ) {
-			$image_data = $this->add_logo_to_png_data( $image_data, $logo_path, $background, ! empty( $appearance['transparent'] ) );
+			$image_data = $this->add_logo_to_png_data( $image_data, $logo_path, $background, ! empty( $appearance['transparent'] ), $matrix->moduleCount, $logo_space_modules );
 		}
 
 		if ( $target ) {
@@ -916,6 +933,16 @@ final class Plugin {
 		}
 
 		return $module_values;
+	}
+
+	private function add_data_segment_to_qrcode( QRCode $qrcode, string $data ): void {
+		foreach ( Mode::INTERFACES as $data_interface ) {
+			if ( $data_interface::validateString( $data ) ) {
+				$qrcode->addSegment( new $data_interface( $data ) );
+
+				return;
+			}
+		}
 	}
 
 	private function get_generation_settings_hash(): string {
@@ -1498,7 +1525,7 @@ final class Plugin {
 		return false === $output ? $png_data : $output;
 	}
 
-	private function add_logo_to_png_data( string $qr_data, string $logo_path, array $background, bool $transparent ): string {
+	private function add_logo_to_png_data( string $qr_data, string $logo_path, array $background, bool $transparent, int $module_count, int $logo_space_modules ): string {
 		$qr_image   = imagecreatefromstring( $qr_data );
 		$logo_image = imagecreatefrompng( $logo_path );
 
@@ -1516,12 +1543,15 @@ final class Plugin {
 		$source_size = min( $logo_width, $logo_height );
 		$source_x    = (int) floor( ( $logo_width - $source_size ) / 2 );
 		$source_y    = (int) floor( ( $logo_height - $source_size ) / 2 );
-		$pad_size    = (int) floor( min( $qr_width, $qr_height ) * 0.24 );
-		$target_size = (int) floor( min( $qr_width, $qr_height ) * 0.18 );
-		$pad_x       = (int) floor( ( $qr_width - $pad_size ) / 2 );
-		$pad_y       = (int) floor( ( $qr_height - $pad_size ) / 2 );
-		$target_x    = (int) floor( ( $qr_width - $target_size ) / 2 );
-		$target_y    = (int) floor( ( $qr_height - $target_size ) / 2 );
+		$module_size = min( $qr_width, $qr_height ) / max( 1, $module_count );
+		$pad_modules = max( 1, $logo_space_modules );
+		$logo_modules = max( 1, $pad_modules - 2 );
+		$pad_size    = (int) round( $pad_modules * $module_size );
+		$target_size = (int) round( $logo_modules * $module_size );
+		$pad_x       = (int) round( ( ( $module_count - $pad_modules ) / 2 ) * $module_size );
+		$pad_y       = (int) round( ( ( $module_count - $pad_modules ) / 2 ) * $module_size );
+		$target_x    = (int) round( ( ( $module_count - $logo_modules ) / 2 ) * $module_size );
+		$target_y    = (int) round( ( ( $module_count - $logo_modules ) / 2 ) * $module_size );
 
 		if ( $transparent ) {
 			$pad_color = imagecolorallocatealpha( $qr_image, $background[0], $background[1], $background[2], 127 );
@@ -1545,6 +1575,24 @@ final class Plugin {
 		imagedestroy( $logo_image );
 
 		return false === $output ? $qr_data : $output;
+	}
+
+	private function get_centered_module_span( int $module_count, float $target_ratio, int $minimum ): int {
+		$span = max( $minimum, (int) round( $module_count * $target_ratio ) );
+
+		if ( ( $module_count - $span ) % 2 !== 0 ) {
+			++$span;
+		}
+
+		if ( $span >= $module_count ) {
+			$span = $module_count - 1;
+		}
+
+		if ( ( $module_count - $span ) % 2 !== 0 ) {
+			--$span;
+		}
+
+		return max( 1, $span );
 	}
 
 	private function hex_to_rgb( string $hex ): array {
