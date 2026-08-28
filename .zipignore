@@ -11,13 +11,13 @@ README.md
 
 # Build system
 
-node_modules/
-src/
-package.json
-package-lock.json
-webpack.config.js
-prepros.config
-composer.json
+/node_modules/
+/src/
+/package.json
+/package-lock.json
+/webpack.config.js
+/prepros.config
+/composer.json
 
 # Temp or backup files
 

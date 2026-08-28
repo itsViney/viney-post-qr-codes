@@ -52,6 +52,10 @@ jobs:
             --exclude-from=".zipignore" \
             "$GITHUB_WORKSPACE/" "../build/${PLUGIN_SLUG}/"
 
+          test -f "../build/${PLUGIN_SLUG}/vendor/autoload.php"
+          test -f "../build/${PLUGIN_SLUG}/vendor/chillerlan/php-qrcode/src/QRCode.php"
+          test -f "../build/${PLUGIN_SLUG}/vendor/chillerlan/php-settings-container/src/SettingsContainerAbstract.php"
+
           cd ../build
           zip -r "../$ZIP_NAME" "${PLUGIN_SLUG}"
 

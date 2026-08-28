@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Viney Post QR Codes
  * Description:       Automatically generates downloadable QR codes for selected post types.
- * Version:           1.1
+ * Version:           1.2
  * Requires PHP:      8.2
  * Author:            Viney
  * Author URI:        https://www.itsviney.com
