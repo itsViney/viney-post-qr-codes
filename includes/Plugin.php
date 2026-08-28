@@ -151,11 +151,12 @@ final class Plugin {
 		}
 
 		$is_custom_page = 'tools_page_viney-generate-qr-code' === $hook_suffix;
+		$asset_version  = defined( 'VINEY_POST_QR_CODES_VERSION' ) ? VINEY_POST_QR_CODES_VERSION : '1.0.0';
 
 		wp_enqueue_style( 'wp-color-picker' );
 		wp_enqueue_media();
-		wp_enqueue_style( 'viney-post-qr-codes-admin', plugins_url( 'assets/admin.css', dirname( __FILE__ ) ), array(), '1.0.0' );
-		wp_enqueue_script( 'viney-post-qr-codes-admin', plugins_url( 'assets/admin.js', dirname( __FILE__ ) ), array( 'jquery', 'wp-color-picker' ), '1.0.0', true );
+		wp_enqueue_style( 'viney-post-qr-codes-admin', plugins_url( 'assets/admin.css', dirname( __FILE__ ) ), array(), $asset_version );
+		wp_enqueue_script( 'viney-post-qr-codes-admin', plugins_url( 'assets/admin.js', dirname( __FILE__ ) ), array( 'jquery', 'wp-color-picker' ), $asset_version, true );
 
 		wp_localize_script(
 			'viney-post-qr-codes-admin',
@@ -184,11 +185,13 @@ final class Plugin {
 			return;
 		}
 
+		$asset_version = defined( 'VINEY_POST_QR_CODES_VERSION' ) ? VINEY_POST_QR_CODES_VERSION : '1.0.0';
+
 		wp_enqueue_script(
 			'viney-post-qr-codes-editor',
 			plugins_url( 'assets/editor.js', dirname( __FILE__ ) ),
 			array( 'wp-api-fetch', 'wp-components', 'wp-data', 'wp-edit-post', 'wp-element', 'wp-notices', 'wp-plugins' ),
-			'1.0.0',
+			$asset_version,
 			true
 		);
 
