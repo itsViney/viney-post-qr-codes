@@ -33,12 +33,15 @@ final class Plugin {
 	private const UPLOAD_DIRNAME = 'viney-qr-codes';
 	private const OUTPUT_SIZE    = 2048;
 	private const RENDER_SCALE_SQUARE = 32;
+	private const RENDER_SCALE_CIRCLES = 80;
 	private const RENDER_SCALE_ROUNDED = 80;
-	private const GENERATION_VERSION = '5';
+	private const GENERATION_VERSION = '6';
 	private const DB_VERSION     = '1';
 	private const DB_VERSION_OPTION = 'viney_post_qr_codes_db_version';
 	private const SHORTLINK_PATH = 'qr';
 	private const TOKEN_LENGTH   = 8;
+	private const USER_META_CUSTOM_APPEARANCE = 'viney_post_qr_codes_custom_appearance';
+	private const USER_META_MATCH_GLOBAL = 'viney_post_qr_codes_custom_match_global';
 
 	private static ?self $instance = null;
 	private bool $suspend_auto_generation = false;
@@ -56,6 +59,7 @@ final class Plugin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'maybe_create_shortlinks_table' ) );
 		add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
+		add_action( 'admin_menu', array( $this, 'add_custom_generator_page' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_assets' ) );
 		add_action( 'enqueue_block_editor_assets', array( $this, 'enqueue_editor_assets' ) );
 		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
@@ -130,10 +134,22 @@ final class Plugin {
 		);
 	}
 
+	public function add_custom_generator_page(): void {
+		add_management_page(
+			__( 'Generate QR Code', 'viney-post-qr-codes' ),
+			__( 'Generate QR Code', 'viney-post-qr-codes' ),
+			'edit_posts',
+			'viney-generate-qr-code',
+			array( $this, 'render_custom_generator_page' )
+		);
+	}
+
 	public function enqueue_admin_assets( string $hook_suffix ): void {
-		if ( 'settings_page_viney-post-qr-codes' !== $hook_suffix ) {
+		if ( ! in_array( $hook_suffix, array( 'settings_page_viney-post-qr-codes', 'tools_page_viney-generate-qr-code' ), true ) ) {
 			return;
 		}
+
+		$is_custom_page = 'tools_page_viney-generate-qr-code' === $hook_suffix;
 
 		wp_enqueue_style( 'wp-color-picker' );
 		wp_enqueue_media();
@@ -150,6 +166,7 @@ final class Plugin {
 				'ajaxNonce'  => wp_create_nonce( 'viney_post_qr_codes_regenerate' ),
 				'restNonce'  => wp_create_nonce( 'wp_rest' ),
 				'optionName' => self::OPTION_NAME,
+				'mode'       => $is_custom_page ? 'custom' : 'settings',
 				'i18n'       => array(
 					'generating' => __( 'Generated %1$d of %2$d QR codes. Do not leave this page while QR codes are being generated.', 'viney-post-qr-codes' ),
 					'complete'   => __( 'Generated %1$d of %2$d QR codes.', 'viney-post-qr-codes' ),
@@ -192,7 +209,7 @@ final class Plugin {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'rest_preview' ),
-				'permission_callback' => static fn (): bool => current_user_can( 'manage_options' ),
+				'permission_callback' => static fn (): bool => current_user_can( 'edit_posts' ),
 			)
 		);
 
@@ -212,7 +229,7 @@ final class Plugin {
 			array(
 				'methods'             => 'POST',
 				'callback'            => array( $this, 'rest_custom' ),
-				'permission_callback' => static fn (): bool => current_user_can( 'manage_options' ),
+				'permission_callback' => static fn (): bool => current_user_can( 'edit_posts' ),
 			)
 		);
 	}
@@ -312,7 +329,8 @@ final class Plugin {
 								<td>
 									<select id="viney-post-qr-codes-module-shape" name="<?php echo esc_attr( self::OPTION_NAME ); ?>[appearance][module_shape]">
 										<option value="square" <?php selected( $options['appearance']['module_shape'], 'square' ); ?>><?php esc_html_e( 'Square', 'viney-post-qr-codes' ); ?></option>
-										<option value="rounded" <?php selected( $options['appearance']['module_shape'], 'rounded' ); ?>><?php esc_html_e( 'Rounded', 'viney-post-qr-codes' ); ?></option>
+										<option value="rounded" <?php selected( $options['appearance']['module_shape'], 'rounded' ); ?>><?php esc_html_e( 'Circles', 'viney-post-qr-codes' ); ?></option>
+										<option value="styled_rounded" <?php selected( $options['appearance']['module_shape'], 'styled_rounded' ); ?>><?php esc_html_e( 'Rounded', 'viney-post-qr-codes' ); ?></option>
 									</select>
 								</td>
 							</tr>
@@ -359,14 +377,114 @@ final class Plugin {
 				<button type="button" class="button button-secondary" id="viney-post-qr-codes-regenerate-button" <?php disabled( empty( $enabled_types ) || (bool) $dependency_error ); ?>><?php esc_html_e( 'Regenerate All', 'viney-post-qr-codes' ); ?></button>
 				<p id="viney-post-qr-codes-regenerate-status" class="description" aria-live="polite"></p>
 			</div>
+		</div>
+		<?php
+	}
 
-			<hr />
-			<h2><?php esc_html_e( 'Generate Custom QR Code', 'viney-post-qr-codes' ); ?></h2>
-			<div class="viney-post-qr-codes-custom">
-				<label for="viney-post-qr-codes-custom-data"><?php esc_html_e( 'URL or data', 'viney-post-qr-codes' ); ?></label>
-				<textarea id="viney-post-qr-codes-custom-data" rows="4" class="large-text code"></textarea>
-				<button type="button" class="button button-primary" id="viney-post-qr-codes-custom-download" <?php disabled( (bool) $dependency_error ); ?>><?php esc_html_e( 'Download QR Code', 'viney-post-qr-codes' ); ?></button>
-				<p id="viney-post-qr-codes-custom-status" class="description" aria-live="polite"></p>
+	public function render_custom_generator_page(): void {
+		if ( ! current_user_can( 'edit_posts' ) ) {
+			return;
+		}
+
+		$dependency_error = $this->get_generation_dependency_error();
+		$match_global     = $this->get_custom_match_global();
+		$appearance       = $this->get_custom_user_appearance();
+		?>
+		<div class="wrap viney-post-qr-codes-settings viney-post-qr-codes-custom-page">
+			<h1><?php esc_html_e( 'Generate QR Code', 'viney-post-qr-codes' ); ?></h1>
+
+			<?php if ( $dependency_error ) : ?>
+				<div class="notice notice-error"><p><?php echo esc_html( $dependency_error ); ?></p></div>
+			<?php endif; ?>
+
+			<div id="viney-post-qr-codes-custom-form" class="viney-post-qr-codes-custom-layout">
+				<div class="viney-post-qr-codes-custom-main">
+					<h2><?php esc_html_e( 'URL', 'viney-post-qr-codes' ); ?></h2>
+					<div class="viney-post-qr-codes-custom">
+						<label for="viney-post-qr-codes-custom-url"><?php esc_html_e( 'URL', 'viney-post-qr-codes' ); ?></label>
+						<input type="url" id="viney-post-qr-codes-custom-url" class="regular-text" placeholder="https://example.com/page" />
+					</div>
+
+					<h2><?php esc_html_e( 'Tracking', 'viney-post-qr-codes' ); ?></h2>
+					<p class="description"><?php esc_html_e( 'UTM fields add tracking parameters to the URL for analytics. Anchor adds a #section jump target to the final URL.', 'viney-post-qr-codes' ); ?></p>
+					<div class="viney-post-qr-codes-utm-fields viney-post-qr-codes-custom-utm-fields">
+						<label><?php esc_html_e( 'Anchor', 'viney-post-qr-codes' ); ?><input type="text" id="viney-post-qr-codes-custom-anchor" placeholder="eg. section-name" /></label>
+						<label><?php esc_html_e( 'Source', 'viney-post-qr-codes' ); ?><input type="text" id="viney-post-qr-codes-custom-source" placeholder="eg. qr_code" /></label>
+						<label><?php esc_html_e( 'Medium', 'viney-post-qr-codes' ); ?><input type="text" id="viney-post-qr-codes-custom-medium" placeholder="eg. print" /></label>
+						<label><?php esc_html_e( 'Campaign', 'viney-post-qr-codes' ); ?><input type="text" id="viney-post-qr-codes-custom-campaign" placeholder="eg. summer_event" /></label>
+						<label><?php esc_html_e( 'Term', 'viney-post-qr-codes' ); ?><input type="text" id="viney-post-qr-codes-custom-term" placeholder="eg. brochure" /></label>
+					</div>
+
+					<h2><?php esc_html_e( 'Appearance', 'viney-post-qr-codes' ); ?></h2>
+					<div class="viney-post-qr-codes-appearance">
+						<div>
+							<p>
+								<label>
+									<input type="checkbox" id="viney-post-qr-codes-match-global" <?php checked( $match_global ); ?> />
+									<?php esc_html_e( 'Match global styles', 'viney-post-qr-codes' ); ?>
+								</label>
+							</p>
+							<div class="viney-post-qr-codes-custom-appearance-fields">
+								<table class="form-table" role="presentation">
+									<tbody>
+										<tr>
+											<th scope="row"><?php esc_html_e( 'Background colour', 'viney-post-qr-codes' ); ?></th>
+											<td>
+												<input type="text" class="viney-post-qr-codes-color" id="viney-post-qr-codes-custom-background-color" value="<?php echo esc_attr( $appearance['background_color'] ); ?>" />
+												<label class="viney-post-qr-codes-inline-check"><input type="checkbox" id="viney-post-qr-codes-custom-transparent" <?php checked( $appearance['transparent'] ); ?> /> <?php esc_html_e( 'Transparent', 'viney-post-qr-codes' ); ?></label>
+											</td>
+										</tr>
+										<tr>
+											<th scope="row"><?php esc_html_e( 'Foreground colour', 'viney-post-qr-codes' ); ?></th>
+											<td><input type="text" class="viney-post-qr-codes-color" id="viney-post-qr-codes-custom-foreground-color" value="<?php echo esc_attr( $appearance['foreground_color'] ); ?>" /></td>
+										</tr>
+										<tr>
+											<th scope="row"><label for="viney-post-qr-codes-custom-margin"><?php esc_html_e( 'Margin', 'viney-post-qr-codes' ); ?></label></th>
+											<td><input type="number" id="viney-post-qr-codes-custom-margin" min="1" max="20" step="1" value="<?php echo esc_attr( $appearance['margin'] ); ?>" /></td>
+										</tr>
+										<tr>
+											<th scope="row"><label for="viney-post-qr-codes-custom-module-shape"><?php esc_html_e( 'Module shape', 'viney-post-qr-codes' ); ?></label></th>
+											<td>
+												<select id="viney-post-qr-codes-custom-module-shape">
+													<option value="square" <?php selected( $appearance['module_shape'], 'square' ); ?>><?php esc_html_e( 'Square', 'viney-post-qr-codes' ); ?></option>
+													<option value="rounded" <?php selected( $appearance['module_shape'], 'rounded' ); ?>><?php esc_html_e( 'Circles', 'viney-post-qr-codes' ); ?></option>
+													<option value="styled_rounded" <?php selected( $appearance['module_shape'], 'styled_rounded' ); ?>><?php esc_html_e( 'Rounded', 'viney-post-qr-codes' ); ?></option>
+												</select>
+											</td>
+										</tr>
+										<tr>
+											<th scope="row"><?php esc_html_e( 'Logo', 'viney-post-qr-codes' ); ?></th>
+											<td>
+												<input type="hidden" id="viney-post-qr-codes-logo-id" value="<?php echo esc_attr( $appearance['logo_id'] ); ?>" />
+												<div class="viney-post-qr-codes-logo-preview">
+													<?php if ( ! empty( $appearance['logo_id'] ) ) : ?>
+														<?php echo wp_get_attachment_image( (int) $appearance['logo_id'], 'thumbnail' ); ?>
+													<?php endif; ?>
+												</div>
+												<button type="button" class="button" id="viney-post-qr-codes-select-logo"><?php esc_html_e( 'Select Logo', 'viney-post-qr-codes' ); ?></button>
+												<button type="button" class="button <?php echo empty( $appearance['logo_id'] ) ? 'is-hidden' : ''; ?>" id="viney-post-qr-codes-remove-logo"><?php esc_html_e( 'Remove Logo', 'viney-post-qr-codes' ); ?></button>
+											</td>
+										</tr>
+									</tbody>
+								</table>
+							</div>
+						</div>
+
+						<div class="viney-post-qr-codes-preview">
+							<h3><?php esc_html_e( 'Preview', 'viney-post-qr-codes' ); ?></h3>
+							<div class="viney-post-qr-codes-preview-frame">
+								<img id="viney-post-qr-codes-preview-image" alt="<?php esc_attr_e( 'QR code preview', 'viney-post-qr-codes' ); ?>" />
+								<span id="viney-post-qr-codes-preview-status"><?php esc_html_e( 'Loading preview...', 'viney-post-qr-codes' ); ?></span>
+							</div>
+						</div>
+					</div>
+
+					<p>
+						<button type="button" class="button button-primary" id="viney-post-qr-codes-custom-download" <?php disabled( (bool) $dependency_error ); ?>><?php esc_html_e( 'Download QR Code', 'viney-post-qr-codes' ); ?></button>
+					</p>
+					<p id="viney-post-qr-codes-custom-status" class="description" aria-live="polite"></p>
+				</div>
+
 			</div>
 		</div>
 		<?php
@@ -398,7 +516,7 @@ final class Plugin {
 			$module_shape = 'rounded';
 		}
 
-		if ( ! in_array( $module_shape, array( 'square', 'rounded' ), true ) ) {
+		if ( ! in_array( $module_shape, array( 'square', 'rounded', 'styled_rounded' ), true ) ) {
 			$module_shape = 'square';
 		}
 
@@ -406,14 +524,28 @@ final class Plugin {
 			'shorten_urls'       => ! empty( $input['shorten_urls'] ),
 			'enabled_post_types' => $enabled,
 			'utm'                => $utm,
-			'appearance'         => array(
-				'background_color' => $this->sanitize_hex_color_with_default( $appearance_input['background_color'] ?? '', '#ffffff' ),
-				'foreground_color' => $this->sanitize_hex_color_with_default( $appearance_input['foreground_color'] ?? '', '#000000' ),
-				'transparent'      => ! empty( $appearance_input['transparent'] ),
-				'margin'           => max( 1, min( 20, absint( $appearance_input['margin'] ?? 4 ) ) ),
-				'module_shape'     => $module_shape,
-				'logo_id'          => $this->sanitize_logo_id( $appearance_input['logo_id'] ?? 0 ),
-			),
+			'appearance'         => $this->sanitize_appearance( $appearance_input, $module_shape ),
+		);
+	}
+
+	private function sanitize_appearance( array $appearance_input, ?string $module_shape = null ): array {
+		$module_shape = $module_shape ?? ( isset( $appearance_input['module_shape'] ) ? sanitize_key( $appearance_input['module_shape'] ) : 'square' );
+
+		if ( 'circle' === $module_shape ) {
+			$module_shape = 'rounded';
+		}
+
+		if ( ! in_array( $module_shape, array( 'square', 'rounded', 'styled_rounded' ), true ) ) {
+			$module_shape = 'square';
+		}
+
+		return array(
+			'background_color' => $this->sanitize_hex_color_with_default( $appearance_input['background_color'] ?? '', '#ffffff' ),
+			'foreground_color' => $this->sanitize_hex_color_with_default( $appearance_input['foreground_color'] ?? '', '#000000' ),
+			'transparent'      => ! empty( $appearance_input['transparent'] ),
+			'margin'           => max( 1, min( 20, absint( $appearance_input['margin'] ?? 4 ) ) ),
+			'module_shape'     => $module_shape,
+			'logo_id'          => $this->sanitize_logo_id( $appearance_input['logo_id'] ?? 0 ),
 		);
 	}
 
@@ -522,10 +654,24 @@ final class Plugin {
 			return new WP_Error( 'viney_post_qr_codes_dependency_error', $dependency_error, array( 'status' => 500 ) );
 		}
 
-		$appearance = $this->sanitize_options( array( 'appearance' => $request->get_json_params() ?: array() ) )['appearance'];
+		$params = $request->get_json_params() ?: array();
+		$url    = home_url( '/' );
+		$is_custom_request = isset( $params['url'] ) || isset( $params['utm'] ) || isset( $params['match_global_styles'] );
+
+		if ( $is_custom_request ) {
+			$raw_url = isset( $params['url'] ) ? trim( sanitize_text_field( wp_unslash( $params['url'] ) ) ) : '';
+
+			if ( '' !== $raw_url && ! $this->is_absolute_url( $raw_url ) ) {
+				return new WP_Error( 'viney_post_qr_codes_invalid_custom_url', __( 'Enter a valid URL beginning with http:// or https://.', 'viney-post-qr-codes' ), array( 'status' => 400 ) );
+			}
+
+			$url = '' === $raw_url ? home_url( '/' ) : $this->build_tracking_url( $raw_url, $this->sanitize_tracking_fields( $params['utm'] ?? array() ) );
+		}
+
+		$appearance = $is_custom_request ? $this->get_custom_request_appearance( $params, true ) : $this->sanitize_options( array( 'appearance' => $params ) )['appearance'];
 
 		try {
-			$data_uri = $this->render_qr_code( home_url( '/' ), null, $appearance );
+			$data_uri = $this->render_qr_code( $url, null, $appearance );
 		} catch ( \Throwable $exception ) {
 			return new WP_Error( 'viney_post_qr_codes_preview_failed', $exception->getMessage(), array( 'status' => 500 ) );
 		}
@@ -568,16 +714,22 @@ final class Plugin {
 		}
 
 		$params = $request->get_json_params() ?: array();
-		$data   = isset( $params['data'] ) ? trim( sanitize_textarea_field( wp_unslash( $params['data'] ) ) ) : '';
+		$data   = isset( $params['url'] ) ? trim( sanitize_text_field( wp_unslash( $params['url'] ) ) ) : '';
 
 		if ( '' === $data ) {
-			return new WP_Error( 'viney_post_qr_codes_empty_custom_data', __( 'Enter a URL or data to generate a QR code.', 'viney-post-qr-codes' ), array( 'status' => 400 ) );
+			return new WP_Error( 'viney_post_qr_codes_empty_custom_url', __( 'Enter a URL to generate a QR code.', 'viney-post-qr-codes' ), array( 'status' => 400 ) );
 		}
 
-		$encoded_data = $data;
+		if ( ! $this->is_absolute_url( $data ) ) {
+			return new WP_Error( 'viney_post_qr_codes_invalid_custom_url', __( 'Enter a valid URL beginning with http:// or https://.', 'viney-post-qr-codes' ), array( 'status' => 400 ) );
+		}
 
-		if ( $this->should_shorten_urls() && $this->is_absolute_url( $data ) ) {
-			$short_url = $this->create_custom_shortlink( $data );
+		$destination_url = $this->build_tracking_url( $data, $this->sanitize_tracking_fields( $params['utm'] ?? array() ) );
+		$encoded_data    = $destination_url;
+		$appearance      = $this->get_custom_request_appearance( $params, true );
+
+		if ( $this->should_shorten_urls() ) {
+			$short_url = $this->create_custom_shortlink( $destination_url );
 
 			if ( is_wp_error( $short_url ) ) {
 				return $short_url;
@@ -587,7 +739,7 @@ final class Plugin {
 		}
 
 		try {
-			$data_uri = $this->render_qr_code( $encoded_data, null, $this->get_options()['appearance'] );
+			$data_uri = $this->render_qr_code( $encoded_data, null, $appearance );
 		} catch ( \Throwable $exception ) {
 			return new WP_Error( 'viney_post_qr_codes_custom_failed', $exception->getMessage(), array( 'status' => 500 ) );
 		}
@@ -704,20 +856,21 @@ final class Plugin {
 		$shape      = (string) $appearance['module_shape'];
 		$logo_path  = $this->get_logo_path( (int) ( $appearance['logo_id'] ?? 0 ) );
 		$module_values = $this->get_module_values( $foreground, $background );
-		$is_rounded = 'rounded' === $shape;
+		$is_circles = 'rounded' === $shape;
+		$is_styled_rounded = 'styled_rounded' === $shape;
 		$options    = new QROptions(
 			array(
-				'outputInterface'     => QRGdImagePNG::class,
+				'outputInterface'     => $is_styled_rounded ? QRGdStyledRounded::class : QRGdImagePNG::class,
 				'outputBase64'        => false,
 				'eccLevel'            => $logo_path ? EccLevel::H : EccLevel::L,
-				'scale'               => $is_rounded ? self::RENDER_SCALE_ROUNDED : self::RENDER_SCALE_SQUARE,
+				'scale'               => $is_styled_rounded ? self::RENDER_SCALE_ROUNDED : ( $is_circles ? self::RENDER_SCALE_CIRCLES : self::RENDER_SCALE_SQUARE ),
 				'addQuietzone'        => true,
 				'quietzoneSize'       => (int) $appearance['margin'],
 				'bgColor'             => $background,
 				'imageTransparent'    => ! empty( $appearance['transparent'] ),
 				'transparencyColor'   => $background,
 				'drawLightModules'    => false,
-				'drawCircularModules' => $is_rounded,
+				'drawCircularModules' => $is_circles || $is_styled_rounded,
 				'circleRadius'        => 0.35,
 				'keepAsSquare'        => array(
 					QRMatrix::M_FINDER_DARK,
@@ -729,7 +882,7 @@ final class Plugin {
 		);
 
 		$image_data = ( new QRCode( $options ) )->render( $url );
-		$image_data = $this->resize_png_data( $image_data, self::OUTPUT_SIZE, $is_rounded );
+		$image_data = $this->resize_png_data( $image_data, self::OUTPUT_SIZE, $is_circles || $is_styled_rounded );
 
 		if ( $logo_path ) {
 			$image_data = $this->add_logo_to_png_data( $image_data, $logo_path, $background, ! empty( $appearance['transparent'] ) );
@@ -770,33 +923,93 @@ final class Plugin {
 		$url     = (string) get_permalink( $post_id );
 		$options = $this->get_options();
 		$utm     = $post ? ( $options['utm'][ $post->post_type ] ?? array() ) : array();
-		$args    = array();
-
-		if ( ! empty( $utm['source'] ) ) {
-			$args['utm_source'] = $utm['source'];
-		}
-
-		if ( ! empty( $utm['medium'] ) ) {
-			$args['utm_medium'] = $utm['medium'];
-		}
-
-		if ( ! empty( $utm['campaign'] ) ) {
-			$args['utm_campaign'] = $utm['campaign'];
-		}
 
 		if ( ! empty( $utm['term_use_title'] ) && $post ) {
-			$args['utm_term'] = $post->post_title;
-		} elseif ( ! empty( $utm['term'] ) ) {
-			$args['utm_term'] = $utm['term'];
+			$utm['term'] = $post->post_title;
 		}
 
-		$url = empty( $args ) ? $url : add_query_arg( $args, $url );
+		return $this->build_tracking_url( $url, $utm );
+	}
 
-		if ( ! empty( $utm['anchor'] ) ) {
-			$url .= '#' . rawurlencode( $utm['anchor'] );
+	private function build_tracking_url( string $url, array $tracking ): string {
+		$args = array();
+
+		if ( ! empty( $tracking['anchor'] ) ) {
+			$fragment_position = strpos( $url, '#' );
+
+			if ( false !== $fragment_position ) {
+				$url = substr( $url, 0, $fragment_position );
+			}
 		}
 
-		return $url;
+		if ( ! empty( $tracking['source'] ) ) {
+			$args['utm_source'] = $tracking['source'];
+		}
+
+		if ( ! empty( $tracking['medium'] ) ) {
+			$args['utm_medium'] = $tracking['medium'];
+		}
+
+		if ( ! empty( $tracking['campaign'] ) ) {
+			$args['utm_campaign'] = $tracking['campaign'];
+		}
+
+		if ( ! empty( $tracking['term'] ) ) {
+			$args['utm_term'] = $tracking['term'];
+		}
+
+		$tracked_url = empty( $args ) ? $url : add_query_arg( $args, $url );
+
+		if ( ! empty( $tracking['anchor'] ) ) {
+			$tracked_url .= '#' . rawurlencode( $tracking['anchor'] );
+		}
+
+		return $tracked_url;
+	}
+
+	private function sanitize_tracking_fields( mixed $input ): array {
+		$input = is_array( $input ) ? $input : array();
+
+		return array(
+			'anchor'   => isset( $input['anchor'] ) ? $this->sanitize_anchor( $input['anchor'] ) : '',
+			'source'   => isset( $input['source'] ) ? sanitize_text_field( wp_unslash( $input['source'] ) ) : '',
+			'medium'   => isset( $input['medium'] ) ? sanitize_text_field( wp_unslash( $input['medium'] ) ) : '',
+			'campaign' => isset( $input['campaign'] ) ? sanitize_text_field( wp_unslash( $input['campaign'] ) ) : '',
+			'term'     => isset( $input['term'] ) ? sanitize_text_field( wp_unslash( $input['term'] ) ) : '',
+		);
+	}
+
+	private function get_custom_request_appearance( array $params, bool $save_user_preferences ): array {
+		$match_global = ! isset( $params['match_global_styles'] ) || ! empty( $params['match_global_styles'] );
+
+		if ( $match_global ) {
+			if ( $save_user_preferences ) {
+				update_user_meta( get_current_user_id(), self::USER_META_MATCH_GLOBAL, '1' );
+			}
+
+			return $this->get_options()['appearance'];
+		}
+
+		$appearance = $this->sanitize_appearance( is_array( $params['appearance'] ?? null ) ? $params['appearance'] : array() );
+
+		if ( $save_user_preferences ) {
+			update_user_meta( get_current_user_id(), self::USER_META_MATCH_GLOBAL, '0' );
+			update_user_meta( get_current_user_id(), self::USER_META_CUSTOM_APPEARANCE, $appearance );
+		}
+
+		return $appearance;
+	}
+
+	private function get_custom_match_global(): bool {
+		$value = get_user_meta( get_current_user_id(), self::USER_META_MATCH_GLOBAL, true );
+
+		return '' === $value ? true : '1' === $value;
+	}
+
+	private function get_custom_user_appearance(): array {
+		$appearance = get_user_meta( get_current_user_id(), self::USER_META_CUSTOM_APPEARANCE, true );
+
+		return wp_parse_args( is_array( $appearance ) ? $appearance : array(), $this->get_options()['appearance'] );
 	}
 
 	private function get_post_encoded_qr_url( \WP_Post $post, string $destination_url ): string|WP_Error {

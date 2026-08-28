@@ -2,6 +2,8 @@
 	'use strict';
 
 	const config = window.VineyPostQRCodesAdmin;
+	const option = config.optionName;
+	const isCustomMode = config.mode === 'custom';
 	const $form = $('#viney-post-qr-codes-settings-form');
 	const $previewImage = $('#viney-post-qr-codes-preview-image');
 	const $previewStatus = $('#viney-post-qr-codes-preview-status');
@@ -13,9 +15,11 @@
 	const $logoPreview = $('.viney-post-qr-codes-logo-preview');
 	const $selectLogo = $('#viney-post-qr-codes-select-logo');
 	const $removeLogo = $('#viney-post-qr-codes-remove-logo');
-	const $customData = $('#viney-post-qr-codes-custom-data');
+	const $customUrl = $('#viney-post-qr-codes-custom-url');
 	const $customDownload = $('#viney-post-qr-codes-custom-download');
 	const $customStatus = $('#viney-post-qr-codes-custom-status');
+	const $matchGlobal = $('#viney-post-qr-codes-match-global');
+	const $customAppearanceFields = $('.viney-post-qr-codes-custom-appearance-fields');
 
 	function debounce(fn, delay) {
 		let timer;
@@ -26,9 +30,7 @@
 		};
 	}
 
-	function getAppearance() {
-		const option = config.optionName;
-
+	function getSettingsAppearance() {
 		return {
 			background_color: $(`[name="${option}[appearance][background_color]"]`).val(),
 			foreground_color: $(`[name="${option}[appearance][foreground_color]"]`).val(),
@@ -36,6 +38,40 @@
 			margin: $(`[name="${option}[appearance][margin]"]`).val(),
 			module_shape: $(`[name="${option}[appearance][module_shape]"]`).val(),
 			logo_id: $logoId.val(),
+		};
+	}
+
+	function getCustomAppearance() {
+		return {
+			background_color: $('#viney-post-qr-codes-custom-background-color').val(),
+			foreground_color: $('#viney-post-qr-codes-custom-foreground-color').val(),
+			transparent: $('#viney-post-qr-codes-custom-transparent').is(':checked') ? '1' : '',
+			margin: $('#viney-post-qr-codes-custom-margin').val(),
+			module_shape: $('#viney-post-qr-codes-custom-module-shape').val(),
+			logo_id: $logoId.val(),
+		};
+	}
+
+	function getCustomTracking() {
+		return {
+			anchor: $('#viney-post-qr-codes-custom-anchor').val(),
+			source: $('#viney-post-qr-codes-custom-source').val(),
+			medium: $('#viney-post-qr-codes-custom-medium').val(),
+			campaign: $('#viney-post-qr-codes-custom-campaign').val(),
+			term: $('#viney-post-qr-codes-custom-term').val(),
+		};
+	}
+
+	function getPreviewPayload() {
+		if (!isCustomMode) {
+			return getSettingsAppearance();
+		}
+
+		return {
+			url: $customUrl.val().trim(),
+			utm: getCustomTracking(),
+			match_global_styles: $matchGlobal.is(':checked') ? '1' : '',
+			appearance: getCustomAppearance(),
 		};
 	}
 
@@ -49,7 +85,17 @@
 		link.remove();
 	}
 
+	function parseErrorResponse(response) {
+		return response.json().then((error) => {
+			throw new Error(error.message || config.i18n.failed);
+		});
+	}
+
 	function updatePreview() {
+		if (!$previewFrame.length) {
+			return;
+		}
+
 		$previewFrame.removeClass('has-image');
 		$previewStatus.text('Loading preview...');
 
@@ -60,11 +106,11 @@
 					'Content-Type': 'application/json',
 					'X-WP-Nonce': config.restNonce,
 				},
-				body: JSON.stringify(getAppearance()),
+				body: JSON.stringify(getPreviewPayload()),
 			})
 			.then((response) => {
 				if (!response.ok) {
-					throw new Error('Preview unavailable.');
+					return parseErrorResponse(response);
 				}
 
 				return response.json();
@@ -83,7 +129,6 @@
 		$regenButton.prop('disabled', isBusy);
 		$regenPostType.prop('disabled', isBusy);
 		$form.find('input, select, button').prop('disabled', isBusy);
-		$customDownload.prop('disabled', isBusy);
 	}
 
 	function format(template, generated, total) {
@@ -113,6 +158,12 @@
 
 			return data;
 		});
+	}
+
+	function updateCustomAppearanceState() {
+		const isMatchingGlobal = $matchGlobal.is(':checked');
+
+		$customAppearanceFields.find('input, select, button').prop('disabled', isMatchingGlobal);
 	}
 
 	$('.viney-post-qr-codes-color').wpColorPicker({
@@ -162,6 +213,12 @@
 	});
 
 	$form.on('change input', 'input, select', debounce(updatePreview, 300));
+	$('#viney-post-qr-codes-custom-form').on('change input', 'input, select', debounce(updatePreview, 300));
+
+	$matchGlobal.on('change', function () {
+		updateCustomAppearanceState();
+		updatePreview();
+	});
 
 	$regenButton.on('click', function () {
 		setBusy(true);
@@ -177,10 +234,10 @@
 	});
 
 	$customDownload.on('click', function () {
-		const data = $customData.val().trim();
+		const url = $customUrl.val().trim();
 
-		if (!data) {
-			$customStatus.text('Enter a URL or data to generate a QR code.');
+		if (!url) {
+			$customStatus.text('Enter a URL to generate a QR code.');
 			return;
 		}
 
@@ -194,13 +251,16 @@
 					'Content-Type': 'application/json',
 					'X-WP-Nonce': config.restNonce,
 				},
-				body: JSON.stringify({ data }),
+				body: JSON.stringify({
+					url,
+					utm: getCustomTracking(),
+					match_global_styles: $matchGlobal.is(':checked') ? '1' : '',
+					appearance: getCustomAppearance(),
+				}),
 			})
 			.then((response) => {
 				if (!response.ok) {
-					return response.json().then((error) => {
-						throw new Error(error.message || config.i18n.failed);
-					});
+					return parseErrorResponse(response);
 				}
 
 				return response.json();
@@ -217,5 +277,6 @@
 			});
 	});
 
+	updateCustomAppearanceState();
 	updatePreview();
 })(jQuery);

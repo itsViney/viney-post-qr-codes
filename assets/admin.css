@@ -108,12 +108,40 @@
 	max-width: 760px;
 }
 
+.viney-post-qr-codes-custom-layout {
+	align-items: flex-start;
+	display: flex;
+	gap: 32px;
+}
+
+.viney-post-qr-codes-custom-main {
+	max-width: 1040px;
+	width: 100%;
+}
+
 .viney-post-qr-codes-custom label {
 	display: block;
 	font-weight: 600;
 	margin-bottom: 6px;
 }
 
-.viney-post-qr-codes-custom textarea {
+.viney-post-qr-codes-custom input[type="url"] {
 	margin-bottom: 8px;
+	max-width: 520px;
+	width: 100%;
+}
+
+.viney-post-qr-codes-custom-utm-fields {
+	margin: 12px 0 24px;
+}
+
+.viney-post-qr-codes-custom-appearance-fields .form-table {
+	margin-top: 0;
+}
+
+@media (max-width: 960px) {
+	.viney-post-qr-codes-appearance,
+	.viney-post-qr-codes-custom-layout {
+		display: block;
+	}
 }
