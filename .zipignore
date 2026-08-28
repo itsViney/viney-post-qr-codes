@@ -21,8 +21,8 @@ composer.json
 
 # Temp or backup files
 
-\*.bak
-\*.lock
+*.bak
+*.lock
 
 # Optional: editor/OS junk
 
